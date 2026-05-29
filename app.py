@@ -1,425 +1,895 @@
-import os
-from flask import Flask, render_template, redirect, url_for, flash, request, abort, jsonify
-from flask_login import LoginManager, login_user, logout_user, login_required, current_user
-from sqlalchemy import or_
-from datetime import datetime
+"""
+GradList - Graduation Registry Web Application
+Production-ready Flask application with SQLite backend.
+"""
 
-from config import config
-from models import db, User, GraduateProfile, PartyDetails, RegistryItem, ExternalRegistry
-from forms import (
-    RegistrationForm, LoginForm, ProfileEditForm, PartyDetailsForm,
-    RegistryItemForm, ExternalRegistryForm, MarkPurchasedForm,
-    SearchForm, AccountSettingsForm
+import os
+import re
+import sqlite3
+import secrets
+import hashlib
+import hmac
+from datetime import datetime, date
+from functools import wraps
+from flask import (
+    Flask, render_template, request, redirect, url_for,
+    session, flash, g, abort, jsonify
 )
 
-def create_app(config_name=None):
-    if config_name is None:
-        config_name = os.environ.get('FLASK_ENV', 'default')
-
-    app = Flask(__name__)
-    app.config.from_object(config[config_name])
-
-    # Initialize extensions
-    db.init_app(app)
-
-    login_manager = LoginManager()
-    login_manager.init_app(app)
-    login_manager.login_view = 'login'
-    login_manager.login_message = 'Please sign in to access that page.'
-    login_manager.login_message_category = 'info'
-
-    @login_manager.user_loader
-    def load_user(user_id):
-        return User.query.get(int(user_id))
-
-    # ─────────────────────────────────────────────
-    # Context processors
-    # ─────────────────────────────────────────────
-    @app.context_processor
-    def inject_globals():
-        return {
-            'now': datetime.utcnow(),
-            'search_form': SearchForm()
-        }
-
-    # ─────────────────────────────────────────────
-    # Public routes
-    # ─────────────────────────────────────────────
-
-    @app.route('/')
-    def index():
-        # Get some recent public profiles for the homepage
-        recent_profiles = GraduateProfile.query.filter_by(is_public=True)\
-            .filter(GraduateProfile.first_name != '')\
-            .order_by(GraduateProfile.updated_at.desc())\
-            .limit(6).all()
-        return render_template('index.html', recent_profiles=recent_profiles)
-
-    @app.route('/search')
-    def search():
-        form = SearchForm(request.args)
-        profiles = []
-        searched = False
-
-        query = request.args.get('query', '').strip()
-        school = request.args.get('school', '').strip()
-        year = request.args.get('year', '').strip()
-
-        if query or school or year:
-            searched = True
-            q = GraduateProfile.query.filter_by(is_public=True)
-
-            if query:
-                search_term = f'%{query}%'
-                q = q.filter(
-                    or_(
-                        GraduateProfile.first_name.ilike(search_term),
-                        GraduateProfile.last_name.ilike(search_term),
-                        GraduateProfile.school_name.ilike(search_term),
-                        GraduateProfile.degree.ilike(search_term),
-                    )
-                )
-
-            if school:
-                q = q.filter(GraduateProfile.school_name.ilike(f'%{school}%'))
-
-            if year:
-                try:
-                    year_int = int(year)
-                    q = q.filter(GraduateProfile.graduation_year == year_int)
-                except ValueError:
-                    pass
-
-            profiles = q.order_by(GraduateProfile.last_name).limit(50).all()
-
-        return render_template('search.html', form=form, profiles=profiles, searched=searched)
-
-    @app.route('/grad/<slug>')
-    def public_profile(slug):
-        profile = GraduateProfile.query.filter_by(slug=slug).first_or_404()
-        if not profile.is_public and (not current_user.is_authenticated or current_user.id != profile.user_id):
-            abort(404)
-
-        registry_items = profile.registry_items.order_by(RegistryItem.is_purchased, RegistryItem.created_at).all()
-        external_registries = profile.external_registries.all()
-        mark_purchased_form = MarkPurchasedForm()
-
-        return render_template(
-            'profile_public.html',
-            profile=profile,
-            registry_items=registry_items,
-            external_registries=external_registries,
-            mark_purchased_form=mark_purchased_form
-        )
-
-    @app.route('/item/<int:item_id>/purchase', methods=['POST'])
-    def mark_item_purchased(item_id):
-        item = RegistryItem.query.get_or_404(item_id)
-        form = MarkPurchasedForm()
-
-        if form.validate_on_submit():
-            if not item.is_fully_claimed:
-                item.quantity_purchased = min(item.quantity_purchased + 1, item.quantity_needed)
-                if item.quantity_purchased >= item.quantity_needed:
-                    item.is_purchased = True
-                if form.purchased_by_note.data:
-                    item.purchased_by_note = form.purchased_by_note.data
-                db.session.commit()
-                flash(f'Thank you! "{item.title}" has been marked as purchased.', 'success')
-            else:
-                flash('This item has already been fully claimed.', 'warning')
-        else:
-            flash('Something went wrong. Please try again.', 'danger')
-
-        return redirect(url_for('public_profile', slug=item.profile.slug))
-
-    # ─────────────────────────────────────────────
-    # Auth routes
-    # ─────────────────────────────────────────────
-
-    @app.route('/register', methods=['GET', 'POST'])
-    def register():
-        if current_user.is_authenticated:
-            return redirect(url_for('dashboard'))
-
-        form = RegistrationForm()
-        if form.validate_on_submit():
-            user = User(email=form.email.data.lower().strip())
-            user.set_password(form.password.data)
-            db.session.add(user)
-            db.session.flush()  # Get the user ID
-
-            # Create empty profile
-            profile = GraduateProfile(user_id=user.id)
-            db.session.add(profile)
-            db.session.commit()
-
-            login_user(user)
-            flash('Welcome! Your account has been created. Let\'s set up your page.', 'success')
-            return redirect(url_for('edit_profile'))
-
-        return render_template('register.html', form=form)
-
-    @app.route('/login', methods=['GET', 'POST'])
-    def login():
-        if current_user.is_authenticated:
-            return redirect(url_for('dashboard'))
-
-        form = LoginForm()
-        if form.validate_on_submit():
-            user = User.query.filter_by(email=form.email.data.lower().strip()).first()
-            if user and user.check_password(form.password.data):
-                login_user(user)
-                next_page = request.args.get('next')
-                flash('Welcome back!', 'success')
-                return redirect(next_page or url_for('dashboard'))
-            else:
-                flash('Invalid email or password. Please try again.', 'danger')
-
-        return render_template('login.html', form=form)
-
-    @app.route('/logout')
-    @login_required
-    def logout():
-        logout_user()
-        flash('You have been signed out.', 'info')
-        return redirect(url_for('index'))
-
-    # ─────────────────────────────────────────────
-    # Authenticated routes
-    # ─────────────────────────────────────────────
-
-    @app.route('/dashboard')
-    @login_required
-    def dashboard():
-        profile = current_user.profile
-        registry_items = profile.registry_items.all() if profile else []
-        external_registries = profile.external_registries.all() if profile else []
-        return render_template(
-            'dashboard.html',
-            profile=profile,
-            registry_items=registry_items,
-            external_registries=external_registries
-        )
-
-    @app.route('/profile/edit', methods=['GET', 'POST'])
-    @login_required
-    def edit_profile():
-        profile = current_user.profile
-        if not profile:
-            profile = GraduateProfile(user_id=current_user.id)
-            db.session.add(profile)
-            db.session.commit()
-
-        form = ProfileEditForm(obj=profile)
-
-        if form.validate_on_submit():
-            profile.first_name = form.first_name.data.strip()
-            profile.last_name = form.last_name.data.strip()
-            profile.photo_url = form.photo_url.data or None
-            profile.personal_message = form.personal_message.data or None
-            profile.school_name = form.school_name.data or None
-            profile.degree = form.degree.data or None
-            profile.graduation_date = form.graduation_date.data
-            profile.is_public = form.is_public.data
-
-            if form.graduation_date.data:
-                profile.graduation_year = form.graduation_date.data.year
-
-            # Generate/regenerate slug
-            profile.generate_slug()
-
-            db.session.commit()
-            flash('Your profile has been updated!', 'success')
-            return redirect(url_for('dashboard'))
-
-        return render_template('profile_edit.html', form=form, profile=profile)
-
-    @app.route('/party/edit', methods=['GET', 'POST'])
-    @login_required
-    def edit_party():
-        profile = current_user.profile
-        party = profile.party_details
-
-        if not party:
-            party = PartyDetails(profile_id=profile.id)
-            db.session.add(party)
-            db.session.commit()
-
-        form = PartyDetailsForm(obj=party)
-
-        if form.validate_on_submit():
-            party.event_title = form.event_title.data or None
-            party.event_date = form.event_date.data
-            party.event_time = form.event_time.data or None
-            party.location_name = form.location_name.data or None
-            party.location_address = form.location_address.data or None
-            party.rsvp_instructions = form.rsvp_instructions.data or None
-            party.rsvp_deadline = form.rsvp_deadline.data
-            party.additional_notes = form.additional_notes.data or None
-            db.session.commit()
-            flash('Party details have been saved!', 'success')
-            return redirect(url_for('dashboard'))
-
-        return render_template('party_edit.html', form=form, profile=profile)
-
-    @app.route('/registry/add', methods=['GET', 'POST'])
-    @login_required
-    def add_registry_item():
-        profile = current_user.profile
-        form = RegistryItemForm()
-
-        if form.validate_on_submit():
-            item = RegistryItem(
-                profile_id=profile.id,
-                title=form.title.data.strip(),
-                description=form.description.data or None,
-                price=form.price.data,
-                quantity_needed=form.quantity_needed.data or 1,
-                external_url=form.external_url.data or None,
-                image_url=form.image_url.data or None,
-                category=form.category.data or None,
-                priority=form.priority.data
-            )
-            db.session.add(item)
-            db.session.commit()
-            flash(f'"{item.title}" has been added to your registry!', 'success')
-            return redirect(url_for('dashboard'))
-
-        return render_template('registry_item_form.html', form=form, profile=profile, editing=False)
-
-    @app.route('/registry/<int:item_id>/edit', methods=['GET', 'POST'])
-    @login_required
-    def edit_registry_item(item_id):
-        item = RegistryItem.query.get_or_404(item_id)
-        if item.profile.user_id != current_user.id:
-            abort(403)
-
-        form = RegistryItemForm(obj=item)
-
-        if form.validate_on_submit():
-            item.title = form.title.data.strip()
-            item.description = form.description.data or None
-            item.price = form.price.data
-            item.quantity_needed = form.quantity_needed.data or 1
-            item.external_url = form.external_url.data or None
-            item.image_url = form.image_url.data or None
-            item.category = form.category.data or None
-            item.priority = form.priority.data
-            db.session.commit()
-            flash(f'"{item.title}" has been updated!', 'success')
-            return redirect(url_for('dashboard'))
-
-        return render_template('registry_item_form.html', form=form, profile=current_user.profile, editing=True, item=item)
-
-    @app.route('/registry/<int:item_id>/delete', methods=['POST'])
-    @login_required
-    def delete_registry_item(item_id):
-        item = RegistryItem.query.get_or_404(item_id)
-        if item.profile.user_id != current_user.id:
-            abort(403)
-        title = item.title
-        db.session.delete(item)
-        db.session.commit()
-        flash(f'"{title}" has been removed from your registry.', 'info')
-        return redirect(url_for('dashboard'))
-
-    @app.route('/external-registry/add', methods=['GET', 'POST'])
-    @login_required
-    def add_external_registry():
-        profile = current_user.profile
-        form = ExternalRegistryForm()
-
-        if form.validate_on_submit():
-            reg = ExternalRegistry(
-                profile_id=profile.id,
-                name=form.name.data.strip(),
-                url=form.url.data.strip(),
-                description=form.description.data or None
-            )
-            db.session.add(reg)
-            db.session.commit()
-            flash(f'"{reg.name}" has been linked to your profile!', 'success')
-            return redirect(url_for('dashboard'))
-
-        return render_template('external_registry_form.html', form=form, profile=profile)
-
-    @app.route('/external-registry/<int:reg_id>/delete', methods=['POST'])
-    @login_required
-    def delete_external_registry(reg_id):
-        reg = ExternalRegistry.query.get_or_404(reg_id)
-        if reg.profile.user_id != current_user.id:
-            abort(403)
-        name = reg.name
-        db.session.delete(reg)
-        db.session.commit()
-        flash(f'"{name}" has been removed.', 'info')
-        return redirect(url_for('dashboard'))
-
-    @app.route('/account', methods=['GET', 'POST'])
-    @login_required
-    def account_settings():
-        form = AccountSettingsForm(obj=current_user)
-
-        if form.validate_on_submit():
-            # Check if email is changing
-            new_email = form.email.data.lower().strip()
-            if new_email != current_user.email:
-                existing = User.query.filter_by(email=new_email).first()
-                if existing:
-                    flash('That email address is already in use.', 'danger')
-                    return render_template('account_settings.html', form=form)
-                current_user.email = new_email
-
-            # Handle password change
-            if form.new_password.data:
-                if not form.current_password.data:
-                    flash('Please enter your current password to set a new one.', 'danger')
-                    return render_template('account_settings.html', form=form)
-                if not current_user.check_password(form.current_password.data):
-                    flash('Current password is incorrect.', 'danger')
-                    return render_template('account_settings.html', form=form)
-                current_user.set_password(form.new_password.data)
-
-            db.session.commit()
-            flash('Account settings updated successfully.', 'success')
-            return redirect(url_for('account_settings'))
-
-        return render_template('account_settings.html', form=form)
-
-    @app.route('/account/delete', methods=['POST'])
-    @login_required
-    def delete_account():
-        user = current_user
-        logout_user()
-        db.session.delete(user)
-        db.session.commit()
-        flash('Your account has been permanently deleted.', 'info')
-        return redirect(url_for('index'))
-
-    # ─────────────────────────────────────────────
-    # Error handlers
-    # ─────────────────────────────────────────────
-
-    @app.errorhandler(404)
-    def not_found(e):
-        return render_template('404.html'), 404
-
-    @app.errorhandler(403)
-    def forbidden(e):
-        return render_template('403.html'), 403
-
-    @app.errorhandler(500)
-    def server_error(e):
-        return render_template('500.html'), 500
-
-    return app
-
-
-app = create_app()
-
-if __name__ == '__main__':
+# ---------------------------------------------------------------------------
+# App Configuration
+# ---------------------------------------------------------------------------
+
+app = Flask(__name__)
+app.secret_key = os.environ.get("SECRET_KEY", secrets.token_hex(32))
+
+DATABASE = os.path.join(os.path.dirname(__file__), "gradlist.db")
+
+# ---------------------------------------------------------------------------
+# Database Helpers
+# ---------------------------------------------------------------------------
+
+def get_db():
+    db = getattr(g, "_database", None)
+    if db is None:
+        db = g._database = sqlite3.connect(DATABASE)
+        db.row_factory = sqlite3.Row
+        db.execute("PRAGMA foreign_keys = ON")
+    return db
+
+
+@app.teardown_appcontext
+def close_connection(exception):
+    db = getattr(g, "_database", None)
+    if db is not None:
+        db.close()
+
+
+def query_db(query, args=(), one=False):
+    cur = get_db().execute(query, args)
+    rv = cur.fetchall()
+    cur.close()
+    return (rv[0] if rv else None) if one else rv
+
+
+def mutate_db(query, args=()):
+    db = get_db()
+    cur = db.execute(query, args)
+    db.commit()
+    return cur.lastrowid
+
+
+# ---------------------------------------------------------------------------
+# Schema Initialization
+# ---------------------------------------------------------------------------
+
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS users (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    email       TEXT    NOT NULL UNIQUE,
+    username    TEXT    NOT NULL UNIQUE,
+    password_hash TEXT  NOT NULL,
+    full_name   TEXT    NOT NULL,
+    bio         TEXT    DEFAULT '',
+    avatar_color TEXT   DEFAULT '#6C5CE7',
+    created_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS registries (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    slug          TEXT    NOT NULL UNIQUE,
+    title         TEXT    NOT NULL,
+    graduate_name TEXT    NOT NULL,
+    school        TEXT    NOT NULL DEFAULT '',
+    degree        TEXT    NOT NULL DEFAULT '',
+    grad_date     TEXT    NOT NULL,
+    description   TEXT    DEFAULT '',
+    is_public     INTEGER NOT NULL DEFAULT 1,
+    cover_color   TEXT    NOT NULL DEFAULT '#6C5CE7',
+    created_at    TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS registry_items (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    registry_id   INTEGER NOT NULL REFERENCES registries(id) ON DELETE CASCADE,
+    title         TEXT    NOT NULL,
+    description   TEXT    DEFAULT '',
+    price         REAL    NOT NULL DEFAULT 0.0,
+    quantity_needed INTEGER NOT NULL DEFAULT 1,
+    quantity_purchased INTEGER NOT NULL DEFAULT 0,
+    product_url   TEXT    DEFAULT '',
+    category      TEXT    DEFAULT 'Other',
+    is_priority   INTEGER NOT NULL DEFAULT 0,
+    sort_order    INTEGER NOT NULL DEFAULT 0,
+    created_at    TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS external_registries (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    registry_id   INTEGER NOT NULL REFERENCES registries(id) ON DELETE CASCADE,
+    name          TEXT    NOT NULL,
+    url           TEXT    NOT NULL,
+    store_name    TEXT    NOT NULL DEFAULT '',
+    description   TEXT    DEFAULT '',
+    sort_order    INTEGER NOT NULL DEFAULT 0,
+    created_at    TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+"""
+
+
+def init_db():
     with app.app_context():
-        db.create_all()
-        print("Database tables created.")
-    app.run(debug=True)
+        db = get_db()
+        for stmt in SCHEMA.strip().split(";"):
+            stmt = stmt.strip()
+            if stmt:
+                db.execute(stmt)
+        db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Auth Helpers
+# ---------------------------------------------------------------------------
+
+def hash_password(password: str) -> str:
+    salt = secrets.token_hex(16)
+    hashed = hashlib.sha256((salt + password).encode()).hexdigest()
+    return f"{salt}:{hashed}"
+
+
+def check_password(stored: str, provided: str) -> bool:
+    try:
+        salt, hashed = stored.split(":", 1)
+        return hmac.compare_digest(
+            hashed, hashlib.sha256((salt + provided).encode()).hexdigest()
+        )
+    except Exception:
+        return False
+
+
+def login_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if "user_id" not in session:
+            flash("Please log in to continue.", "info")
+            return redirect(url_for("login", next=request.path))
+        return f(*args, **kwargs)
+    return decorated
+
+
+def current_user():
+    if "user_id" not in session:
+        return None
+    return query_db("SELECT * FROM users WHERE id = ?", [session["user_id"]], one=True)
+
+
+def slugify(text: str) -> str:
+    text = text.lower().strip()
+    text = re.sub(r"[^\w\s-]", "", text)
+    text = re.sub(r"[\s_-]+", "-", text)
+    text = re.sub(r"^-+|-+$", "", text)
+    return text or "registry"
+
+
+def unique_slug(base: str) -> str:
+    slug = slugify(base)
+    candidate = slug
+    suffix = 1
+    while query_db("SELECT id FROM registries WHERE slug = ?", [candidate], one=True):
+        candidate = f"{slug}-{suffix}"
+        suffix += 1
+    return candidate
+
+
+def validate_url(url: str) -> bool:
+    if not url:
+        return True
+    return url.startswith("http://") or url.startswith("https://")
+
+
+ITEM_CATEGORIES = [
+    "Tech & Electronics",
+    "Books & Education",
+    "Home & Kitchen",
+    "Clothing & Accessories",
+    "Experiences & Travel",
+    "Career & Professional",
+    "Fitness & Wellness",
+    "Entertainment",
+    "Cash Fund",
+    "Other",
+]
+
+STORE_CHOICES = [
+    ("Amazon", "Amazon"),
+    ("Target", "Target"),
+    ("Best Buy", "Best Buy"),
+    ("Etsy", "Etsy"),
+    ("Zola", "Zola"),
+    ("Walmart", "Walmart"),
+    ("Crate & Barrel", "Crate & Barrel"),
+    ("Nordstrom", "Nordstrom"),
+    ("Other", "Other"),
+]
+
+COVER_COLORS = [
+    "#6C5CE7", "#00B894", "#E17055", "#0984E3",
+    "#FDCB6E", "#E84393", "#2D3436", "#55EFC4",
+]
+
+
+# ---------------------------------------------------------------------------
+# Context Processor
+# ---------------------------------------------------------------------------
+
+@app.context_processor
+def inject_globals():
+    return {
+        "current_user": current_user(),
+        "now": datetime.utcnow(),
+        "item_categories": ITEM_CATEGORIES,
+        "cover_colors": COVER_COLORS,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Public Routes
+# ---------------------------------------------------------------------------
+
+@app.route("/", methods=["GET", "HEAD"])
+def index():
+    featured = query_db(
+        """SELECT r.*, u.full_name
+           FROM registries r JOIN users u ON r.user_id = u.id
+           WHERE r.is_public = 1
+           ORDER BY r.created_at DESC LIMIT 6"""
+    )
+    return render_template("index.html", featured=featured)
+
+
+@app.route("/discover")
+def discover():
+    q = request.args.get("q", "").strip()
+    page = max(1, int(request.args.get("page", 1)))
+    per_page = 12
+    offset = (page - 1) * per_page
+
+    if q:
+        like = f"%{q}%"
+        registries = query_db(
+            """SELECT r.*, u.full_name,
+                      (SELECT COUNT(*) FROM registry_items WHERE registry_id = r.id) AS item_count
+               FROM registries r JOIN users u ON r.user_id = u.id
+               WHERE r.is_public = 1
+                 AND (r.title LIKE ? OR r.graduate_name LIKE ? OR r.school LIKE ?)
+               ORDER BY r.created_at DESC LIMIT ? OFFSET ?""",
+            [like, like, like, per_page, offset],
+        )
+        total = query_db(
+            """SELECT COUNT(*) AS c FROM registries r
+               WHERE r.is_public = 1
+                 AND (r.title LIKE ? OR r.graduate_name LIKE ? OR r.school LIKE ?)""",
+            [like, like, like], one=True,
+        )["c"]
+    else:
+        registries = query_db(
+            """SELECT r.*, u.full_name,
+                      (SELECT COUNT(*) FROM registry_items WHERE registry_id = r.id) AS item_count
+               FROM registries r JOIN users u ON r.user_id = u.id
+               WHERE r.is_public = 1
+               ORDER BY r.created_at DESC LIMIT ? OFFSET ?""",
+            [per_page, offset],
+        )
+        total = query_db(
+            "SELECT COUNT(*) AS c FROM registries WHERE is_public = 1", one=True
+        )["c"]
+
+    total_pages = max(1, (total + per_page - 1) // per_page)
+    return render_template(
+        "discover.html",
+        registries=registries,
+        q=q,
+        page=page,
+        total_pages=total_pages,
+        total=total,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Auth Routes
+# ---------------------------------------------------------------------------
+
+@app.route("/register", methods=["GET", "POST"])
+def register():
+    if "user_id" in session:
+        return redirect(url_for("dashboard"))
+
+    if request.method == "POST":
+        full_name = request.form.get("full_name", "").strip()
+        email = request.form.get("email", "").strip().lower()
+        username = request.form.get("username", "").strip().lower()
+        password = request.form.get("password", "")
+        confirm = request.form.get("confirm_password", "")
+
+        errors = []
+        if not full_name:
+            errors.append("Full name is required.")
+        if not email or "@" not in email:
+            errors.append("Valid email is required.")
+        if not username or len(username) < 3:
+            errors.append("Username must be at least 3 characters.")
+        if not re.match(r"^[a-z0-9_-]+$", username):
+            errors.append("Username may only contain letters, numbers, underscores, and hyphens.")
+        if len(password) < 8:
+            errors.append("Password must be at least 8 characters.")
+        if password != confirm:
+            errors.append("Passwords do not match.")
+        if query_db("SELECT id FROM users WHERE email = ?", [email], one=True):
+            errors.append("That email is already registered.")
+        if query_db("SELECT id FROM users WHERE username = ?", [username], one=True):
+            errors.append("That username is taken.")
+
+        if errors:
+            for e in errors:
+                flash(e, "error")
+            return render_template("register.html", form=request.form)
+
+        colors = ["#6C5CE7", "#00B894", "#E17055", "#0984E3", "#FDCB6E", "#E84393"]
+        color = secrets.choice(colors)
+        uid = mutate_db(
+            "INSERT INTO users (email, username, password_hash, full_name, avatar_color) VALUES (?,?,?,?,?)",
+            [email, username, hash_password(password), full_name, color],
+        )
+        session["user_id"] = uid
+        session.permanent = True
+        flash(f"Welcome to GradList, {full_name}! 🎓 Start building your registry.", "success")
+        return redirect(url_for("dashboard"))
+
+    return render_template("register.html", form={})
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if "user_id" in session:
+        return redirect(url_for("dashboard"))
+
+    if request.method == "POST":
+        identifier = request.form.get("identifier", "").strip().lower()
+        password = request.form.get("password", "")
+        next_url = request.form.get("next", "")
+
+        user = query_db(
+            "SELECT * FROM users WHERE email = ? OR username = ?",
+            [identifier, identifier], one=True,
+        )
+        if user and check_password(user["password_hash"], password):
+            session["user_id"] = user["id"]
+            session.permanent = True
+            flash(f"Welcome back, {user['full_name']}! 🎓", "success")
+            return redirect(next_url or url_for("dashboard"))
+
+        flash("Invalid email/username or password.", "error")
+        return render_template("login.html", identifier=identifier, next=next_url)
+
+    return render_template("login.html", identifier="", next=request.args.get("next", ""))
+
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    flash("You've been logged out.", "info")
+    return redirect(url_for("index"))
+
+
+# ---------------------------------------------------------------------------
+# Dashboard
+# ---------------------------------------------------------------------------
+
+@app.route("/dashboard")
+@login_required
+def dashboard():
+    user = current_user()
+    registries = query_db(
+        """SELECT r.*,
+                  (SELECT COUNT(*) FROM registry_items WHERE registry_id = r.id) AS item_count,
+                  (SELECT COUNT(*) FROM external_registries WHERE registry_id = r.id) AS ext_count
+           FROM registries r WHERE r.user_id = ?
+           ORDER BY r.created_at DESC""",
+        [user["id"]],
+    )
+    return render_template("dashboard.html", user=user, registries=registries)
+
+
+# ---------------------------------------------------------------------------
+# Registry CRUD
+# ---------------------------------------------------------------------------
+
+@app.route("/registry/new", methods=["GET", "POST"])
+@login_required
+def new_registry():
+    user = current_user()
+
+    if request.method == "POST":
+        title = request.form.get("title", "").strip()
+        graduate_name = request.form.get("graduate_name", "").strip()
+        school = request.form.get("school", "").strip()
+        degree = request.form.get("degree", "").strip()
+        grad_date = request.form.get("grad_date", "").strip()
+        description = request.form.get("description", "").strip()
+        cover_color = request.form.get("cover_color", "#6C5CE7").strip()
+        is_public = 1 if request.form.get("is_public") else 0
+
+        errors = []
+        if not title:
+            errors.append("Registry title is required.")
+        if not graduate_name:
+            errors.append("Graduate name is required.")
+        if not grad_date:
+            errors.append("Graduation date is required.")
+        if cover_color not in COVER_COLORS:
+            cover_color = "#6C5CE7"
+
+        if errors:
+            for e in errors:
+                flash(e, "error")
+            return render_template("registry_form.html", user=user, form=request.form, edit=False)
+
+        slug_base = f"{graduate_name}-{title}"
+        slug = unique_slug(slug_base)
+
+        rid = mutate_db(
+            """INSERT INTO registries
+               (user_id, slug, title, graduate_name, school, degree, grad_date, description, is_public, cover_color)
+               VALUES (?,?,?,?,?,?,?,?,?,?)""",
+            [user["id"], slug, title, graduate_name, school, degree, grad_date, description, is_public, cover_color],
+        )
+        flash("Registry created! Start adding gifts. 🎁", "success")
+        return redirect(url_for("edit_registry", slug=slug))
+
+    return render_template("registry_form.html", user=user, form={}, edit=False)
+
+
+@app.route("/registry/<slug>/edit", methods=["GET", "POST"])
+@login_required
+def edit_registry(slug):
+    user = current_user()
+    registry = query_db("SELECT * FROM registries WHERE slug = ?", [slug], one=True)
+    if not registry or registry["user_id"] != user["id"]:
+        abort(404)
+
+    if request.method == "POST":
+        action = request.form.get("action", "save")
+
+        if action == "delete":
+            mutate_db("DELETE FROM registries WHERE id = ?", [registry["id"]])
+            flash("Registry deleted.", "info")
+            return redirect(url_for("dashboard"))
+
+        title = request.form.get("title", "").strip()
+        graduate_name = request.form.get("graduate_name", "").strip()
+        school = request.form.get("school", "").strip()
+        degree = request.form.get("degree", "").strip()
+        grad_date = request.form.get("grad_date", "").strip()
+        description = request.form.get("description", "").strip()
+        cover_color = request.form.get("cover_color", "#6C5CE7").strip()
+        is_public = 1 if request.form.get("is_public") else 0
+
+        errors = []
+        if not title:
+            errors.append("Registry title is required.")
+        if not graduate_name:
+            errors.append("Graduate name is required.")
+        if not grad_date:
+            errors.append("Graduation date is required.")
+        if cover_color not in COVER_COLORS:
+            cover_color = registry["cover_color"]
+
+        if errors:
+            for e in errors:
+                flash(e, "error")
+        else:
+            mutate_db(
+                """UPDATE registries SET title=?, graduate_name=?, school=?, degree=?,
+                   grad_date=?, description=?, is_public=?, cover_color=?
+                   WHERE id=?""",
+                [title, graduate_name, school, degree, grad_date, description, is_public, cover_color, registry["id"]],
+            )
+            flash("Registry updated!", "success")
+            registry = query_db("SELECT * FROM registries WHERE id = ?", [registry["id"]], one=True)
+
+    items = query_db(
+        "SELECT * FROM registry_items WHERE registry_id = ? ORDER BY is_priority DESC, sort_order ASC, created_at DESC",
+        [registry["id"]],
+    )
+    external = query_db(
+        "SELECT * FROM external_registries WHERE registry_id = ? ORDER BY sort_order ASC, created_at ASC",
+        [registry["id"]],
+    )
+    return render_template(
+        "registry_edit.html",
+        user=user, registry=registry, items=items, external=external,
+        form=registry, edit=True,
+        store_choices=STORE_CHOICES,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Registry Items
+# ---------------------------------------------------------------------------
+
+@app.route("/registry/<slug>/items/add", methods=["POST"])
+@login_required
+def add_item(slug):
+    user = current_user()
+    registry = query_db("SELECT * FROM registries WHERE slug = ?", [slug], one=True)
+    if not registry or registry["user_id"] != user["id"]:
+        abort(403)
+
+    title = request.form.get("item_title", "").strip()
+    description = request.form.get("item_description", "").strip()
+    price_raw = request.form.get("item_price", "0").strip()
+    qty_raw = request.form.get("item_quantity", "1").strip()
+    product_url = request.form.get("item_url", "").strip()
+    category = request.form.get("item_category", "Other").strip()
+    is_priority = 1 if request.form.get("item_priority") else 0
+
+    errors = []
+    if not title:
+        errors.append("Item title is required.")
+    try:
+        price = round(float(price_raw), 2) if price_raw else 0.0
+        if price < 0:
+            raise ValueError
+    except ValueError:
+        errors.append("Price must be a positive number.")
+        price = 0.0
+    try:
+        qty = int(qty_raw)
+        if qty < 1:
+            raise ValueError
+    except ValueError:
+        errors.append("Quantity must be at least 1.")
+        qty = 1
+    if product_url and not validate_url(product_url):
+        errors.append("Product URL must start with http:// or https://")
+    if category not in ITEM_CATEGORIES:
+        category = "Other"
+
+    if errors:
+        for e in errors:
+            flash(e, "error")
+    else:
+        mutate_db(
+            """INSERT INTO registry_items
+               (registry_id, title, description, price, quantity_needed, product_url, category, is_priority)
+               VALUES (?,?,?,?,?,?,?,?)""",
+            [registry["id"], title, description, price, qty, product_url, category, is_priority],
+        )
+        flash(f'"{title}" added to your registry!', "success")
+
+    return redirect(url_for("edit_registry", slug=slug))
+
+
+@app.route("/registry/<slug>/items/<int:item_id>/edit", methods=["POST"])
+@login_required
+def edit_item(slug, item_id):
+    user = current_user()
+    registry = query_db("SELECT * FROM registries WHERE slug = ?", [slug], one=True)
+    if not registry or registry["user_id"] != user["id"]:
+        abort(403)
+    item = query_db(
+        "SELECT * FROM registry_items WHERE id = ? AND registry_id = ?",
+        [item_id, registry["id"]], one=True,
+    )
+    if not item:
+        abort(404)
+
+    title = request.form.get("item_title", "").strip()
+    description = request.form.get("item_description", "").strip()
+    price_raw = request.form.get("item_price", "0").strip()
+    qty_raw = request.form.get("item_quantity", "1").strip()
+    product_url = request.form.get("item_url", "").strip()
+    category = request.form.get("item_category", "Other").strip()
+    is_priority = 1 if request.form.get("item_priority") else 0
+
+    errors = []
+    if not title:
+        errors.append("Item title is required.")
+    try:
+        price = round(float(price_raw), 2)
+    except ValueError:
+        errors.append("Invalid price.")
+        price = item["price"]
+    try:
+        qty = max(1, int(qty_raw))
+    except ValueError:
+        errors.append("Invalid quantity.")
+        qty = item["quantity_needed"]
+    if product_url and not validate_url(product_url):
+        errors.append("Product URL must start with http:// or https://")
+
+    if errors:
+        for e in errors:
+            flash(e, "error")
+    else:
+        mutate_db(
+            """UPDATE registry_items SET title=?, description=?, price=?,
+               quantity_needed=?, product_url=?, category=?, is_priority=? WHERE id=?""",
+            [title, description, price, qty, product_url, category, is_priority, item_id],
+        )
+        flash("Item updated!", "success")
+
+    return redirect(url_for("edit_registry", slug=slug))
+
+
+@app.route("/registry/<slug>/items/<int:item_id>/delete", methods=["POST"])
+@login_required
+def delete_item(slug, item_id):
+    user = current_user()
+    registry = query_db("SELECT * FROM registries WHERE slug = ?", [slug], one=True)
+    if not registry or registry["user_id"] != user["id"]:
+        abort(403)
+    mutate_db(
+        "DELETE FROM registry_items WHERE id = ? AND registry_id = ?",
+        [item_id, registry["id"]],
+    )
+    flash("Item removed.", "info")
+    return redirect(url_for("edit_registry", slug=slug))
+
+
+@app.route("/registry/<slug>/items/<int:item_id>/purchased", methods=["POST"])
+def mark_purchased(slug, item_id):
+    """Guests can mark items as purchased (no login required)."""
+    registry = query_db("SELECT * FROM registries WHERE slug = ? AND is_public = 1", [slug], one=True)
+    if not registry:
+        abort(404)
+    item = query_db(
+        "SELECT * FROM registry_items WHERE id = ? AND registry_id = ?",
+        [item_id, registry["id"]], one=True,
+    )
+    if not item:
+        abort(404)
+
+    qty_purchased = item["quantity_purchased"]
+    qty_needed = item["quantity_needed"]
+    if qty_purchased < qty_needed:
+        mutate_db(
+            "UPDATE registry_items SET quantity_purchased = quantity_purchased + 1 WHERE id = ?",
+            [item_id],
+        )
+        flash("Marked as purchased! The graduate will love it. 🎓", "success")
+    else:
+        flash("This item has already been fully purchased.", "info")
+
+    return redirect(url_for("view_registry", slug=slug))
+
+
+# ---------------------------------------------------------------------------
+# External Registries
+# ---------------------------------------------------------------------------
+
+@app.route("/registry/<slug>/external/add", methods=["POST"])
+@login_required
+def add_external(slug):
+    user = current_user()
+    registry = query_db("SELECT * FROM registries WHERE slug = ?", [slug], one=True)
+    if not registry or registry["user_id"] != user["id"]:
+        abort(403)
+
+    name = request.form.get("ext_name", "").strip()
+    url = request.form.get("ext_url", "").strip()
+    store_name = request.form.get("ext_store", "").strip()
+    description = request.form.get("ext_description", "").strip()
+
+    errors = []
+    if not name:
+        errors.append("Registry name is required.")
+    if not url:
+        errors.append("Registry URL is required.")
+    elif not validate_url(url):
+        errors.append("URL must start with http:// or https://")
+
+    if errors:
+        for e in errors:
+            flash(e, "error")
+    else:
+        mutate_db(
+            """INSERT INTO external_registries (registry_id, name, url, store_name, description)
+               VALUES (?,?,?,?,?)""",
+            [registry["id"], name, url, store_name, description],
+        )
+        flash(f'"{name}" external registry linked!', "success")
+
+    return redirect(url_for("edit_registry", slug=slug))
+
+
+@app.route("/registry/<slug>/external/<int:ext_id>/delete", methods=["POST"])
+@login_required
+def delete_external(slug, ext_id):
+    user = current_user()
+    registry = query_db("SELECT * FROM registries WHERE slug = ?", [slug], one=True)
+    if not registry or registry["user_id"] != user["id"]:
+        abort(403)
+    mutate_db(
+        "DELETE FROM external_registries WHERE id = ? AND registry_id = ?",
+        [ext_id, registry["id"]],
+    )
+    flash("External registry removed.", "info")
+    return redirect(url_for("edit_registry", slug=slug))
+
+
+# ---------------------------------------------------------------------------
+# Public Registry View
+# ---------------------------------------------------------------------------
+
+@app.route("/r/<slug>")
+def view_registry(slug):
+    registry = query_db(
+        """SELECT r.*, u.full_name AS owner_name, u.username AS owner_username
+           FROM registries r JOIN users u ON r.user_id = u.id
+           WHERE r.slug = ?""",
+        [slug], one=True,
+    )
+    if not registry:
+        abort(404)
+
+    user = current_user()
+    is_owner = user and user["id"] == registry["user_id"]
+
+    if not registry["is_public"] and not is_owner:
+        abort(404)
+
+    category_filter = request.args.get("cat", "").strip()
+    show_purchased = request.args.get("show_purchased", "1") == "1"
+
+    items_query = """
+        SELECT * FROM registry_items WHERE registry_id = ?
+    """
+    args = [registry["id"]]
+
+    if category_filter and category_filter in ITEM_CATEGORIES:
+        items_query += " AND category = ?"
+        args.append(category_filter)
+
+    if not show_purchased:
+        items_query += " AND quantity_purchased < quantity_needed"
+
+    items_query += " ORDER BY is_priority DESC, sort_order ASC, created_at DESC"
+
+    items = query_db(items_query, args)
+    external = query_db(
+        "SELECT * FROM external_registries WHERE registry_id = ? ORDER BY sort_order ASC",
+        [registry["id"]],
+    )
+
+    categories_used = query_db(
+        "SELECT DISTINCT category FROM registry_items WHERE registry_id = ? ORDER BY category",
+        [registry["id"]],
+    )
+
+    total_items = query_db(
+        "SELECT COUNT(*) AS c FROM registry_items WHERE registry_id = ?",
+        [registry["id"]], one=True,
+    )["c"]
+    purchased_items = query_db(
+        "SELECT COUNT(*) AS c FROM registry_items WHERE registry_id = ? AND quantity_purchased >= quantity_needed",
+        [registry["id"]], one=True,
+    )["c"]
+    total_value = query_db(
+        "SELECT COALESCE(SUM(price * quantity_needed), 0) AS v FROM registry_items WHERE registry_id = ?",
+        [registry["id"]], one=True,
+    )["v"]
+
+    return render_template(
+        "registry_view.html",
+        registry=registry,
+        items=items,
+        external=external,
+        is_owner=is_owner,
+        category_filter=category_filter,
+        show_purchased=show_purchased,
+        categories_used=categories_used,
+        total_items=total_items,
+        purchased_items=purchased_items,
+        total_value=total_value,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Account Settings
+# ---------------------------------------------------------------------------
+
+@app.route("/account", methods=["GET", "POST"])
+@login_required
+def account():
+    user = current_user()
+
+    if request.method == "POST":
+        action = request.form.get("action", "profile")
+
+        if action == "profile":
+            full_name = request.form.get("full_name", "").strip()
+            bio = request.form.get("bio", "").strip()
+            avatar_color = request.form.get("avatar_color", user["avatar_color"]).strip()
+
+            if not full_name:
+                flash("Name is required.", "error")
+            else:
+                if avatar_color not in COVER_COLORS:
+                    avatar_color = user["avatar_color"]
+                mutate_db(
+                    "UPDATE users SET full_name=?, bio=?, avatar_color=? WHERE id=?",
+                    [full_name, bio, avatar_color, user["id"]],
+                )
+                flash("Profile updated!", "success")
+
+        elif action == "password":
+            current_pw = request.form.get("current_password", "")
+            new_pw = request.form.get("new_password", "")
+            confirm_pw = request.form.get("confirm_password", "")
+
+            if not check_password(user["password_hash"], current_pw):
+                flash("Current password is incorrect.", "error")
+            elif len(new_pw) < 8:
+                flash("New password must be at least 8 characters.", "error")
+            elif new_pw != confirm_pw:
+                flash("New passwords do not match.", "error")
+            else:
+                mutate_db(
+                    "UPDATE users SET password_hash=? WHERE id=?",
+                    [hash_password(new_pw), user["id"]],
+                )
+                flash("Password changed successfully!", "success")
+
+        return redirect(url_for("account"))
+
+    return render_template("account.html", user=user)
+
+
+# ---------------------------------------------------------------------------
+# Error Handlers
+# ---------------------------------------------------------------------------
+
+def _error_page(code, message):
+    try:
+        return render_template("error.html", code=code, message=message), code
+    except Exception:
+        html = f"""<!DOCTYPE html>
+<html><head><title>{code} Error - GradList</title>
+<style>body{{font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#FAFAF7}}
+.box{{text-align:center;max-width:480px;padding:40px}}
+h1{{font-size:5rem;color:#e2e4e8;margin:0}}h2{{color:#1B2845;margin:8px 0 12px}}
+p{{color:#5C6370;margin-bottom:24px}}
+a{{display:inline-block;margin:4px;padding:10px 22px;border-radius:12px;text-decoration:none;font-weight:600}}
+.primary{{background:#1B2845;color:#fff}}.outline{{border:2px solid #e2e4e8;color:#1B2845}}</style>
+</head><body><div class="box">
+<h1>{code}</h1><h2>{"Page Not Found" if code==404 else "Access Denied" if code==403 else "Something Went Wrong"}</h2>
+<p>{message}</p>
+<a href="/" class="primary">Go Home</a> <a href="/discover" class="outline">Find a Registry</a>
+</div></body></html>"""
+        return html, code
+
+
+@app.errorhandler(404)
+def not_found(e):
+    return _error_page(404, "Page not found.")
+
+
+@app.errorhandler(403)
+def forbidden(e):
+    return _error_page(403, "Access denied.")
+
+
+@app.errorhandler(500)
+def server_error(e):
+    return _error_page(500, "Something went wrong on our end.")
+
+
+# ---------------------------------------------------------------------------
+# Entry Point
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    init_db()
+    app.run(debug=True, port=5000)
