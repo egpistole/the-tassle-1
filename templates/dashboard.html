@@ -1,0 +1,296 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard — GradRegistry{% endblock %}
+
+{% block content %}
+<div class="dashboard-page">
+  <!-- Dashboard Header -->
+  <header class="dashboard-header">
+    <div class="container">
+      <div class="dashboard-header__inner">
+        <div class="dashboard-greeting">
+          <h1 class="dashboard-title">
+            {% if profile and profile.full_name %}
+              Welcome back, {{ profile.first_name }}
+            {% else %}
+              Your Dashboard
+            {% endif %}
+            <span class="title-cap">🎓</span>
+          </h1>
+          {% if profile and profile.slug %}
+            <a href="{{ url_for('public_profile', slug=profile.slug) }}" class="page-link-pill" target="_blank">
+              <span class="page-link-pill__url">gradregistry.com/grad/{{ profile.slug }}</span>
+              <span class="page-link-pill__icon">↗</span>
+            </a>
+          {% endif %}
+        </div>
+        <div class="dashboard-actions">
+          {% if profile and not profile.first_name %}
+            <a href="{{ url_for('edit_profile') }}" class="btn btn--primary">
+              ✦ Complete your profile
+            </a>
+          {% else %}
+            <a href="{{ url_for('edit_profile') }}" class="btn btn--outline btn--sm">Edit Profile</a>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div class="dashboard-body">
+    <div class="container">
+      <div class="dashboard-grid">
+
+        <!-- Left column: Profile status + Party + Quick actions -->
+        <aside class="dashboard-sidebar">
+
+          <!-- Profile completion card -->
+          <div class="dash-card dash-card--profile">
+            <div class="dash-card__header">
+              <h2 class="dash-card__title">Your Profile</h2>
+              <a href="{{ url_for('edit_profile') }}" class="dash-card__edit">Edit →</a>
+            </div>
+            <div class="profile-preview">
+              {% if profile and profile.photo_url %}
+                <img src="{{ profile.photo_url }}" alt="{{ profile.full_name }}" class="profile-preview__photo">
+              {% else %}
+                <div class="profile-preview__placeholder">
+                  {{ profile.first_name[0] if profile and profile.first_name else '?' }}
+                </div>
+              {% endif %}
+              <div class="profile-preview__info">
+                <strong>{{ profile.full_name if profile and profile.full_name else 'Name not set' }}</strong>
+                {% if profile and profile.school_name %}
+                  <span>{{ profile.school_name }}</span>
+                {% endif %}
+                {% if profile and profile.degree %}
+                  <span>{{ profile.degree }}</span>
+                {% endif %}
+                {% if profile and profile.graduation_year %}
+                  <span class="badge">Class of {{ profile.graduation_year }}</span>
+                {% endif %}
+              </div>
+            </div>
+
+            <!-- Completion checklist -->
+            <div class="completion-checklist">
+              <div class="checklist-item {% if profile and profile.first_name %}checklist-item--done{% endif %}">
+                <span class="checklist-icon">{% if profile and profile.first_name %}✓{% else %}○{% endif %}</span>
+                <span>Name & photo</span>
+              </div>
+              <div class="checklist-item {% if profile and profile.school_name %}checklist-item--done{% endif %}">
+                <span class="checklist-icon">{% if profile and profile.school_name %}✓{% else %}○{% endif %}</span>
+                <span>School & degree</span>
+              </div>
+              <div class="checklist-item {% if profile and profile.party_details and profile.party_details.event_date %}checklist-item--done{% endif %}">
+                <span class="checklist-icon">{% if profile and profile.party_details and profile.party_details.event_date %}✓{% else %}○{% endif %}</span>
+                <span>Party details</span>
+              </div>
+              <div class="checklist-item {% if registry_items %}checklist-item--done{% endif %}">
+                <span class="checklist-icon">{% if registry_items %}✓{% else %}○{% endif %}</span>
+                <span>Registry items added</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Page visibility -->
+          <div class="dash-card dash-card--visibility">
+            <div class="visibility-status">
+              <div class="visibility-dot {% if profile and profile.is_public %}visibility-dot--live{% else %}visibility-dot--hidden{% endif %}"></div>
+              <div>
+                <strong>Page is {% if profile and profile.is_public %}Live{% else %}Hidden{% endif %}</strong>
+                <span class="visibility-hint">
+                  {% if profile and profile.is_public %}
+                    Anyone with your link can view it
+                  {% else %}
+                    Only you can see your page
+                  {% endif %}
+                </span>
+              </div>
+            </div>
+            {% if profile and profile.slug %}
+              <div class="share-link-row">
+                <input type="text" class="share-link-input" id="share-link-input"
+                  value="{{ request.host_url }}grad/{{ profile.slug }}" readonly>
+                <button class="btn btn--copy" onclick="copyShareLink()" id="copy-btn">Copy</button>
+              </div>
+            {% endif %}
+          </div>
+
+          <!-- Party Details Card -->
+          <div class="dash-card">
+            <div class="dash-card__header">
+              <h2 class="dash-card__title">🎉 Party Details</h2>
+              <a href="{{ url_for('edit_party') }}" class="dash-card__edit">
+                {% if profile and profile.party_details and profile.party_details.event_date %}Edit{% else %}Add{% endif %} →
+              </a>
+            </div>
+            {% if profile and profile.party_details and profile.party_details.event_date %}
+              <div class="party-preview">
+                {% if profile.party_details.event_title %}
+                  <strong class="party-preview__title">{{ profile.party_details.event_title }}</strong>
+                {% endif %}
+                <div class="party-preview__detail">
+                  📅 {{ profile.party_details.event_date.strftime('%B %-d, %Y') }}
+                  {% if profile.party_details.event_time %}
+                    at {{ profile.party_details.event_time }}
+                  {% endif %}
+                </div>
+                {% if profile.party_details.location_name %}
+                  <div class="party-preview__detail">📍 {{ profile.party_details.location_name }}</div>
+                {% endif %}
+              </div>
+            {% else %}
+              <p class="dash-card__empty">No party details yet. Add your celebration info so guests know when and where to celebrate!</p>
+              <a href="{{ url_for('edit_party') }}" class="btn btn--outline btn--sm btn--full">Add Party Details</a>
+            {% endif %}
+          </div>
+
+          <!-- External Registries -->
+          <div class="dash-card">
+            <div class="dash-card__header">
+              <h2 class="dash-card__title">🔗 Linked Registries</h2>
+              <a href="{{ url_for('add_external_registry') }}" class="dash-card__edit">Add →</a>
+            </div>
+            {% if external_registries %}
+              <ul class="external-reg-list">
+                {% for reg in external_registries %}
+                  <li class="external-reg-item">
+                    <div class="external-reg-info">
+                      <span class="external-reg-name">{{ reg.name }}</span>
+                      <a href="{{ reg.url }}" target="_blank" rel="noopener noreferrer" class="external-reg-url">View →</a>
+                    </div>
+                    <form method="POST" action="{{ url_for('delete_external_registry', reg_id=reg.id) }}" class="inline-form">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <button type="submit" class="btn-icon btn-icon--delete" onclick="return confirm('Remove this registry link?')" title="Remove">×</button>
+                    </form>
+                  </li>
+                {% endfor %}
+              </ul>
+            {% else %}
+              <p class="dash-card__empty">Link an existing Amazon, Target, or other registry.</p>
+              <a href="{{ url_for('add_external_registry') }}" class="btn btn--outline btn--sm btn--full">Link a Registry</a>
+            {% endif %}
+          </div>
+
+        </aside>
+
+        <!-- Right column: Registry Items -->
+        <main class="dashboard-main">
+          <div class="registry-header">
+            <div>
+              <h2 class="registry-title">🎁 Gift Registry</h2>
+              <p class="registry-count">
+                {% if registry_items %}
+                  {{ registry_items|length }} item{{ 's' if registry_items|length != 1 }},
+                  {{ registry_items|selectattr('is_fully_claimed')|list|length }} claimed
+                {% else %}
+                  No items yet
+                {% endif %}
+              </p>
+            </div>
+            <a href="{{ url_for('add_registry_item') }}" class="btn btn--primary">
+              + Add Item
+            </a>
+          </div>
+
+          {% if registry_items %}
+            <div class="registry-items-grid">
+              {% for item in registry_items %}
+                <div class="registry-item-card {% if item.is_fully_claimed %}registry-item-card--claimed{% endif %}">
+                  {% if item.image_url %}
+                    <div class="item-card__image">
+                      <img src="{{ item.image_url }}" alt="{{ item.title }}" loading="lazy">
+                      {% if item.is_fully_claimed %}
+                        <div class="item-card__claimed-overlay">✓ Claimed</div>
+                      {% endif %}
+                    </div>
+                  {% else %}
+                    <div class="item-card__image-placeholder">
+                      🎁
+                      {% if item.is_fully_claimed %}
+                        <div class="item-card__claimed-overlay">✓ Claimed</div>
+                      {% endif %}
+                    </div>
+                  {% endif %}
+
+                  <div class="item-card__body">
+                    <div class="item-card__top">
+                      <h3 class="item-card__title">{{ item.title }}</h3>
+                      <div class="item-card__meta">
+                        {% if item.price %}
+                          <span class="item-price">${{ "%.2f"|format(item.price) }}</span>
+                        {% endif %}
+                        {% if item.priority == 'high' %}
+                          <span class="priority-badge priority-badge--high">High Priority</span>
+                        {% elif item.priority == 'low' %}
+                          <span class="priority-badge priority-badge--low">Low Priority</span>
+                        {% endif %}
+                      </div>
+                    </div>
+
+                    {% if item.description %}
+                      <p class="item-card__desc">{{ item.description[:100] }}{% if item.description|length > 100 %}…{% endif %}</p>
+                    {% endif %}
+
+                    <div class="item-card__quantity">
+                      <span>{{ item.quantity_purchased }}/{{ item.quantity_needed }} claimed</span>
+                      <div class="quantity-bar">
+                        <div class="quantity-bar__fill" style="width: {{ [(item.quantity_purchased / item.quantity_needed * 100), 100]|min }}%"></div>
+                      </div>
+                    </div>
+
+                    <div class="item-card__actions">
+                      {% if item.external_url %}
+                        <a href="{{ item.external_url }}" target="_blank" rel="noopener noreferrer" class="btn btn--sm btn--outline">
+                          View Product ↗
+                        </a>
+                      {% endif %}
+                      <a href="{{ url_for('edit_registry_item', item_id=item.id) }}" class="btn btn--sm btn--ghost">
+                        Edit
+                      </a>
+                      <form method="POST" action="{{ url_for('delete_registry_item', item_id=item.id) }}" class="inline-form">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn btn--sm btn--danger-ghost" onclick="return confirm('Remove this item from your registry?')">
+                          Delete
+                        </button>
+                      </form>
+                    </div>
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+          {% else %}
+            <div class="registry-empty">
+              <div class="registry-empty__icon">🎁</div>
+              <h3>Your registry is empty</h3>
+              <p>Add gifts from any online store — just paste the product link and we'll create a card for it.</p>
+              <a href="{{ url_for('add_registry_item') }}" class="btn btn--primary">Add Your First Item</a>
+            </div>
+          {% endif %}
+        </main>
+
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function copyShareLink() {
+  const input = document.getElementById('share-link-input');
+  input.select();
+  input.setSelectionRange(0, 99999);
+  navigator.clipboard.writeText(input.value).then(() => {
+    const btn = document.getElementById('copy-btn');
+    btn.textContent = 'Copied!';
+    btn.classList.add('btn--copied');
+    setTimeout(() => {
+      btn.textContent = 'Copy';
+      btn.classList.remove('btn--copied');
+    }, 2000);
+  });
+}
+</script>
+{% endblock %}

@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+{% block title %}Edit Profile — GradRegistry{% endblock %}
+
+{% block content %}
+<div class="form-page">
+  <div class="form-page__header">
+    <div class="container">
+      <a href="{{ url_for('dashboard') }}" class="back-link">← Dashboard</a>
+      <h1 class="form-page__title">Edit Your Profile</h1>
+      <p class="form-page__subtitle">This information appears on your public graduation page.</p>
+    </div>
+  </div>
+
+  <div class="container container--narrow">
+    {% if profile and profile.slug %}
+      <div class="preview-banner">
+        <span>🔗 Your page:</span>
+        <a href="{{ url_for('public_profile', slug=profile.slug) }}" target="_blank">
+          gradregistry.com/grad/{{ profile.slug }} ↗
+        </a>
+      </div>
+    {% endif %}
+
+    <form method="POST" action="{{ url_for('edit_profile') }}" novalidate class="edit-form">
+      {{ form.hidden_tag() }}
+
+      <div class="form-section">
+        <h2 class="form-section__title">Personal Information</h2>
+
+        <div class="form-row form-row--two">
+          <div class="form-group {% if form.first_name.errors %}form-group--error{% endif %}">
+            {{ form.first_name.label(class="form-label") }}
+            {{ form.first_name(class="form-input", placeholder="Jane") }}
+            {% if form.first_name.errors %}
+              <ul class="form-errors">{% for e in form.first_name.errors %}<li>{{ e }}</li>{% endfor %}</ul>
+            {% endif %}
+          </div>
+          <div class="form-group {% if form.last_name.errors %}form-group--error{% endif %}">
+            {{ form.last_name.label(class="form-label") }}
+            {{ form.last_name(class="form-input", placeholder="Smith") }}
+            {% if form.last_name.errors %}
+              <ul class="form-errors">{% for e in form.last_name.errors %}<li>{{ e }}</li>{% endfor %}</ul>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="form-group {% if form.photo_url.errors %}form-group--error{% endif %}">
+          {{ form.photo_url.label(class="form-label") }}
+          <div class="photo-input-row">
+            <div class="photo-preview" id="photo-preview">
+              {% if profile and profile.photo_url %}
+                <img src="{{ profile.photo_url }}" alt="Profile photo" id="photo-preview-img">
+              {% else %}
+                <span id="photo-preview-placeholder">📷</span>
+              {% endif %}
+            </div>
+            {{ form.photo_url(class="form-input", placeholder="https://example.com/your-photo.jpg", id="photo-url-input") }}
+          </div>
+          <p class="form-hint">Paste a direct link to a photo (from Google Drive, Dropbox, etc.). Make sure the link is publicly accessible.</p>
+          {% if form.photo_url.errors %}
+            <ul class="form-errors">{% for e in form.photo_url.errors %}<li>{{ e }}</li>{% endfor %}</ul>
+          {% endif %}
+        </div>
+
+        <div class="form-group {% if form.personal_message.errors %}form-group--error{% endif %}">
+          {{ form.personal_message.label(class="form-label") }}
+          {{ form.personal_message(class="form-input form-input--textarea", placeholder="Share a message with your family and friends about your graduation journey, what it means to you, and what's next...", rows=5) }}
+          <div class="char-count" id="message-count">0 / 1000</div>
+          {% if form.personal_message.errors %}
+            <ul class="form-errors">{% for e in form.personal_message.errors %}<li>{{ e }}</li>{% endfor %}</ul>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="form-section">
+        <h2 class="form-section__title">Academic Information</h2>
+
+        <div class="form-group {% if form.school_name.errors %}form-group--error{% endif %}">
+          {{ form.school_name.label(class="form-label") }}
+          {{ form.school_name(class="form-input", placeholder="University of Tennessee") }}
+          {% if form.school_name.errors %}
+            <ul class="form-errors">{% for e in form.school_name.errors %}<li>{{ e }}</li>{% endfor %}</ul>
+          {% endif %}
+        </div>
+
+        <div class="form-row form-row--two">
+          <div class="form-group {% if form.degree.errors %}form-group--error{% endif %}">
+            {{ form.degree.label(class="form-label") }}
+            {{ form.degree(class="form-input", placeholder="B.S. Computer Science") }}
+            {% if form.degree.errors %}
+              <ul class="form-errors">{% for e in form.degree.errors %}<li>{{ e }}</li>{% endfor %}</ul>
+            {% endif %}
+          </div>
+          <div class="form-group {% if form.graduation_date.errors %}form-group--error{% endif %}">
+            {{ form.graduation_date.label(class="form-label") }}
+            {{ form.graduation_date(class="form-input") }}
+            {% if form.graduation_date.errors %}
+              <ul class="form-errors">{% for e in form.graduation_date.errors %}<li>{{ e }}</li>{% endfor %}</ul>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <h2 class="form-section__title">Page Settings</h2>
+        <div class="form-group form-group--toggle">
+          <label class="toggle-label">
+            {{ form.is_public(class="toggle-input") }}
+            <span class="toggle-switch"></span>
+            <div class="toggle-text">
+              <strong>Make my page publicly visible</strong>
+              <span>When enabled, anyone with your link can view your graduation page. When disabled, only you can see it.</span>
+            </div>
+          </label>
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <a href="{{ url_for('dashboard') }}" class="btn btn--ghost">Cancel</a>
+        {{ form.submit(class="btn btn--primary") }}
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+// Photo preview
+const photoInput = document.getElementById('photo-url-input');
+const previewImg = document.getElementById('photo-preview-img');
+const previewPlaceholder = document.getElementById('photo-preview-placeholder');
+
+if (photoInput) {
+  photoInput.addEventListener('input', function() {
+    const url = this.value.trim();
+    if (url) {
+      if (!previewImg) {
+        const img = document.createElement('img');
+        img.id = 'photo-preview-img';
+        img.alt = 'Profile photo preview';
+        document.getElementById('photo-preview').innerHTML = '';
+        document.getElementById('photo-preview').appendChild(img);
+      }
+      document.getElementById('photo-preview-img') && (document.getElementById('photo-preview-img').src = url);
+    }
+  });
+}
+
+// Character counter
+const messageField = document.querySelector('textarea[name="personal_message"]');
+const counter = document.getElementById('message-count');
+if (messageField && counter) {
+  function updateCount() {
+    counter.textContent = messageField.value.length + ' / 1000';
+  }
+  messageField.addEventListener('input', updateCount);
+  updateCount();
+}
+</script>
+{% endblock %}

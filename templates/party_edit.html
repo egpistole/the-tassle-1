@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}Party Details — GradRegistry{% endblock %}
+
+{% block content %}
+<div class="form-page">
+  <div class="form-page__header">
+    <div class="container">
+      <a href="{{ url_for('dashboard') }}" class="back-link">← Dashboard</a>
+      <h1 class="form-page__title">Graduation Celebration Details</h1>
+      <p class="form-page__subtitle">Share your party info so guests know when and where to celebrate with you.</p>
+    </div>
+  </div>
+
+  <div class="container container--narrow">
+    <form method="POST" action="{{ url_for('edit_party') }}" novalidate class="edit-form">
+      {{ form.hidden_tag() }}
+
+      <div class="form-section">
+        <h2 class="form-section__title">Event Info</h2>
+
+        <div class="form-group {% if form.event_title.errors %}form-group--error{% endif %}">
+          {{ form.event_title.label(class="form-label") }}
+          {{ form.event_title(class="form-input", placeholder="e.g. Jane's Graduation Party!") }}
+          {% if form.event_title.errors %}
+            <ul class="form-errors">{% for e in form.event_title.errors %}<li>{{ e }}</li>{% endfor %}</ul>
+          {% endif %}
+        </div>
+
+        <div class="form-row form-row--two">
+          <div class="form-group {% if form.event_date.errors %}form-group--error{% endif %}">
+            {{ form.event_date.label(class="form-label") }}
+            {{ form.event_date(class="form-input") }}
+            {% if form.event_date.errors %}
+              <ul class="form-errors">{% for e in form.event_date.errors %}<li>{{ e }}</li>{% endfor %}</ul>
+            {% endif %}
+          </div>
+          <div class="form-group {% if form.event_time.errors %}form-group--error{% endif %}">
+            {{ form.event_time.label(class="form-label") }}
+            {{ form.event_time(class="form-input", placeholder="e.g. 2:00 PM – 6:00 PM") }}
+            {% if form.event_time.errors %}
+              <ul class="form-errors">{% for e in form.event_time.errors %}<li>{{ e }}</li>{% endfor %}</ul>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <h2 class="form-section__title">Location</h2>
+
+        <div class="form-group {% if form.location_name.errors %}form-group--error{% endif %}">
+          {{ form.location_name.label(class="form-label") }}
+          {{ form.location_name(class="form-input", placeholder="e.g. The Rooftop at Grand Hall") }}
+          {% if form.location_name.errors %}
+            <ul class="form-errors">{% for e in form.location_name.errors %}<li>{{ e }}</li>{% endfor %}</ul>
+          {% endif %}
+        </div>
+
+        <div class="form-group {% if form.location_address.errors %}form-group--error{% endif %}">
+          {{ form.location_address.label(class="form-label") }}
+          {{ form.location_address(class="form-input form-input--textarea", placeholder="123 Main Street&#10;Nashville, TN 37201", rows=3) }}
+          <p class="form-hint">Guests will be able to click "Get Directions" from your page.</p>
+          {% if form.location_address.errors %}
+            <ul class="form-errors">{% for e in form.location_address.errors %}<li>{{ e }}</li>{% endfor %}</ul>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="form-section">
+        <h2 class="form-section__title">RSVP</h2>
+
+        <div class="form-row form-row--two">
+          <div class="form-group {% if form.rsvp_deadline.errors %}form-group--error{% endif %}">
+            {{ form.rsvp_deadline.label(class="form-label") }}
+            {{ form.rsvp_deadline(class="form-input") }}
+            {% if form.rsvp_deadline.errors %}
+              <ul class="form-errors">{% for e in form.rsvp_deadline.errors %}<li>{{ e }}</li>{% endfor %}</ul>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="form-group {% if form.rsvp_instructions.errors %}form-group--error{% endif %}">
+          {{ form.rsvp_instructions.label(class="form-label") }}
+          {{ form.rsvp_instructions(class="form-input form-input--textarea", placeholder="e.g. Text Jane at (555) 123-4567 or email jane@example.com", rows=3) }}
+          {% if form.rsvp_instructions.errors %}
+            <ul class="form-errors">{% for e in form.rsvp_instructions.errors %}<li>{{ e }}</li>{% endfor %}</ul>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="form-section">
+        <h2 class="form-section__title">Additional Notes</h2>
+        <div class="form-group {% if form.additional_notes.errors %}form-group--error{% endif %}">
+          {{ form.additional_notes.label(class="form-label") }}
+          {{ form.additional_notes(class="form-input form-input--textarea", placeholder="Parking info, dress code, any special instructions for guests…", rows=4) }}
+          {% if form.additional_notes.errors %}
+            <ul class="form-errors">{% for e in form.additional_notes.errors %}<li>{{ e }}</li>{% endfor %}</ul>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <a href="{{ url_for('dashboard') }}" class="btn btn--ghost">Cancel</a>
+        {{ form.submit(class="btn btn--primary") }}
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

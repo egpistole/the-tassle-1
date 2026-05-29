@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block title %}Find a Graduate — GradRegistry{% endblock %}
+
+{% block content %}
+<div class="search-page">
+  <div class="search-hero">
+    <div class="container">
+      <h1 class="search-hero__title">Find a Graduate</h1>
+      <p class="search-hero__subtitle">Search by name, school, or graduation year to find a graduate's page.</p>
+
+      <form method="GET" action="{{ url_for('search') }}" class="search-form-bar" novalidate>
+        <div class="search-bar">
+          <input
+            type="text"
+            name="query"
+            class="search-bar__input"
+            placeholder="Search by name, school, or degree…"
+            value="{{ request.args.get('query', '') }}"
+            autofocus
+          >
+          <button type="submit" class="search-bar__btn">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+            </svg>
+          </button>
+        </div>
+
+        <div class="search-filters">
+          <div class="search-filter-group">
+            <label for="school-filter" class="search-filter-label">School</label>
+            <input
+              type="text"
+              name="school"
+              id="school-filter"
+              class="search-filter-input"
+              placeholder="e.g. Vanderbilt University"
+              value="{{ request.args.get('school', '') }}"
+            >
+          </div>
+          <div class="search-filter-group">
+            <label for="year-filter" class="search-filter-label">Graduation Year</label>
+            <input
+              type="number"
+              name="year"
+              id="year-filter"
+              class="search-filter-input"
+              placeholder="e.g. 2025"
+              value="{{ request.args.get('year', '') }}"
+              min="2000"
+              max="2100"
+            >
+          </div>
+          <button type="submit" class="btn btn--primary">Search</button>
+          {% if request.args %}
+            <a href="{{ url_for('search') }}" class="btn btn--ghost">Clear</a>
+          {% endif %}
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="container">
+    {% if searched %}
+      <div class="search-results-header">
+        {% if profiles %}
+          <p class="search-results-count">
+            Found <strong>{{ profiles|length }}</strong> graduate{{ 's' if profiles|length != 1 }}
+            {% if request.args.get('query') %}
+              matching "<em>{{ request.args.get('query') }}</em>"
+            {% endif %}
+          </p>
+        {% else %}
+          <div class="search-empty">
+            <div class="search-empty__icon">🔍</div>
+            <h3>No graduates found</h3>
+            <p>Try adjusting your search — maybe a different spelling or fewer filters.</p>
+          </div>
+        {% endif %}
+      </div>
+
+      {% if profiles %}
+      <div class="search-results-grid">
+        {% for profile in profiles %}
+        <a href="{{ url_for('public_profile', slug=profile.slug) }}" class="search-result-card">
+          <div class="search-result-photo">
+            {% if profile.photo_url %}
+              <img src="{{ profile.photo_url }}" alt="{{ profile.full_name }}" loading="lazy">
+            {% else %}
+              <div class="search-result-photo__placeholder">
+                {{ profile.first_name[0] if profile.first_name else '?' }}
+              </div>
+            {% endif %}
+          </div>
+          <div class="search-result-info">
+            <h3 class="search-result-name">{{ profile.full_name }}</h3>
+            {% if profile.degree %}
+              <p class="search-result-degree">{{ profile.degree }}</p>
+            {% endif %}
+            {% if profile.school_name %}
+              <p class="search-result-school">{{ profile.school_name }}</p>
+            {% endif %}
+            <div class="search-result-meta">
+              {% if profile.graduation_year %}
+                <span class="badge badge--year">Class of {{ profile.graduation_year }}</span>
+              {% endif %}
+              {% set item_count = profile.registry_items.count() %}
+              {% if item_count > 0 %}
+                <span class="badge badge--items">{{ item_count }} gift{{ 's' if item_count != 1 }}</span>
+              {% endif %}
+              {% if profile.party_details and profile.party_details.event_date %}
+                <span class="badge badge--party">🎉 Party planned</span>
+              {% endif %}
+            </div>
+          </div>
+          <div class="search-result-arrow">→</div>
+        </a>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+    {% else %}
+      <!-- Browse state — show recent when no search yet -->
+      <div class="browse-prompt">
+        <div class="browse-prompt__icon">🎓</div>
+        <h3>Search for a graduate above</h3>
+        <p>Or create your own free graduation page to share with family and friends.</p>
+        <a href="{{ url_for('register') }}" class="btn btn--primary">Create Your Page →</a>
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

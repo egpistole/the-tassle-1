@@ -1,0 +1,382 @@
+{% extends "base.html" %}
+
+{% block title %}{{ profile.full_name }} — GradRegistry{% endblock %}
+{% block meta_description %}Celebrate {{ profile.full_name }}'s graduation{% if profile.school_name %} from {{ profile.school_name }}{% endif %}. View their gift registry and party details.{% endblock %}
+
+{% block content %}
+<div class="public-profile-page">
+
+  <!-- Profile Hero Banner -->
+  <section class="profile-hero">
+    <div class="profile-hero__bg">
+      <div class="profile-hero__orb profile-hero__orb--1"></div>
+      <div class="profile-hero__orb profile-hero__orb--2"></div>
+    </div>
+    <div class="container">
+      <div class="profile-hero__inner">
+        <div class="profile-hero__photo-wrap">
+          {% if profile.photo_url %}
+            <img src="{{ profile.photo_url }}" alt="{{ profile.full_name }}" class="profile-hero__photo">
+          {% else %}
+            <div class="profile-hero__photo-placeholder">
+              {{ profile.first_name[0] if profile.first_name else '?' }}
+            </div>
+          {% endif %}
+          <div class="profile-hero__cap-badge">🎓</div>
+        </div>
+
+        <div class="profile-hero__content">
+          <div class="profile-hero__congrats">Congratulations!</div>
+          <h1 class="profile-hero__name">{{ profile.full_name }}</h1>
+
+          <div class="profile-hero__badges">
+            {% if profile.degree %}
+              <span class="profile-badge">{{ profile.degree }}</span>
+            {% endif %}
+            {% if profile.school_name %}
+              <span class="profile-badge profile-badge--school">{{ profile.school_name }}</span>
+            {% endif %}
+            {% if profile.graduation_year %}
+              <span class="profile-badge profile-badge--year">Class of {{ profile.graduation_year }}</span>
+            {% elif profile.graduation_date %}
+              <span class="profile-badge profile-badge--year">{{ profile.graduation_date.strftime('%B %Y') }}</span>
+            {% endif %}
+          </div>
+
+          {% if profile.personal_message %}
+            <blockquote class="profile-hero__message">
+              <p>"{{ profile.personal_message }}"</p>
+            </blockquote>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Quick nav / tabs -->
+  <div class="profile-nav-bar" id="profile-nav">
+    <div class="container">
+      <nav class="profile-tabs" role="navigation" aria-label="Page sections">
+        {% if profile.party_details and profile.party_details.event_date %}
+          <a href="#party" class="profile-tab" data-section="party">🎉 Party Details</a>
+        {% endif %}
+        {% if registry_items %}
+          <a href="#registry" class="profile-tab" data-section="registry">🎁 Gift Registry</a>
+        {% endif %}
+        {% if external_registries %}
+          <a href="#external" class="profile-tab" data-section="external">🔗 More Registries</a>
+        {% endif %}
+      </nav>
+      <div class="profile-share">
+        <button class="btn btn--sm btn--outline" id="share-btn" onclick="shareProfile()">
+          Share Page
+        </button>
+        {% if current_user.is_authenticated and current_user.profile and current_user.profile.id == profile.id %}
+          <a href="{{ url_for('edit_profile') }}" class="btn btn--sm btn--primary">Edit My Page</a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="profile-content">
+    <div class="container">
+      <div class="profile-sections">
+
+        <!-- Party Details Section -->
+        {% if profile.party_details and profile.party_details.event_date %}
+        <section class="profile-section" id="party">
+          <h2 class="profile-section__title">
+            <span class="section-icon">🎉</span>
+            Graduation Celebration
+          </h2>
+
+          <div class="party-details-card">
+            {% if profile.party_details.event_title %}
+              <h3 class="party-event-title">{{ profile.party_details.event_title }}</h3>
+            {% endif %}
+
+            <div class="party-details-grid">
+              <div class="party-detail-item">
+                <span class="party-detail-icon">📅</span>
+                <div class="party-detail-body">
+                  <strong>Date & Time</strong>
+                  <span>{{ profile.party_details.event_date.strftime('%A, %B %-d, %Y') }}</span>
+                  {% if profile.party_details.event_time %}
+                    <span>{{ profile.party_details.event_time }}</span>
+                  {% endif %}
+                </div>
+              </div>
+
+              {% if profile.party_details.location_name or profile.party_details.location_address %}
+              <div class="party-detail-item">
+                <span class="party-detail-icon">📍</span>
+                <div class="party-detail-body">
+                  <strong>Location</strong>
+                  {% if profile.party_details.location_name %}
+                    <span>{{ profile.party_details.location_name }}</span>
+                  {% endif %}
+                  {% if profile.party_details.location_address %}
+                    <span class="party-address">{{ profile.party_details.location_address }}</span>
+                    <a href="https://maps.google.com/?q={{ profile.party_details.location_address|urlencode }}"
+                       target="_blank" rel="noopener noreferrer" class="map-link">
+                      Get Directions →
+                    </a>
+                  {% endif %}
+                </div>
+              </div>
+              {% endif %}
+
+              {% if profile.party_details.rsvp_instructions %}
+              <div class="party-detail-item">
+                <span class="party-detail-icon">💌</span>
+                <div class="party-detail-body">
+                  <strong>RSVP</strong>
+                  <span>{{ profile.party_details.rsvp_instructions }}</span>
+                  {% if profile.party_details.rsvp_deadline %}
+                    <span class="rsvp-deadline">Please RSVP by {{ profile.party_details.rsvp_deadline.strftime('%B %-d, %Y') }}</span>
+                  {% endif %}
+                </div>
+              </div>
+              {% endif %}
+            </div>
+
+            {% if profile.party_details.additional_notes %}
+              <div class="party-notes">
+                <strong>Additional Notes</strong>
+                <p>{{ profile.party_details.additional_notes }}</p>
+              </div>
+            {% endif %}
+          </div>
+        </section>
+        {% endif %}
+
+        <!-- Gift Registry Section -->
+        {% if registry_items %}
+        <section class="profile-section" id="registry">
+          <div class="registry-section-header">
+            <div>
+              <h2 class="profile-section__title">
+                <span class="section-icon">🎁</span>
+                Gift Registry
+              </h2>
+              <p class="registry-section-subtitle">
+                {{ registry_items|length }} item{{ 's' if registry_items|length != 1 }} ·
+                {{ registry_items|selectattr('is_fully_claimed')|list|length }} claimed
+              </p>
+            </div>
+            <div class="registry-filter" id="registry-filter">
+              <button class="filter-btn filter-btn--active" data-filter="all">All</button>
+              <button class="filter-btn" data-filter="available">Still Needed</button>
+              <button class="filter-btn" data-filter="claimed">Claimed</button>
+            </div>
+          </div>
+
+          <div class="registry-grid" id="registry-grid">
+            {% for item in registry_items %}
+            <div class="public-item-card {% if item.is_fully_claimed %}public-item-card--claimed{% endif %}"
+                 data-claimed="{{ 'true' if item.is_fully_claimed else 'false' }}">
+
+              <div class="public-item__image-wrap">
+                {% if item.image_url %}
+                  <img src="{{ item.image_url }}" alt="{{ item.title }}" class="public-item__image" loading="lazy">
+                {% else %}
+                  <div class="public-item__image-placeholder">🎁</div>
+                {% endif %}
+                {% if item.is_fully_claimed %}
+                  <div class="public-item__claimed-badge">✓ Claimed</div>
+                {% elif item.priority == 'high' %}
+                  <div class="public-item__priority-badge">⭐ Most Wanted</div>
+                {% endif %}
+              </div>
+
+              <div class="public-item__body">
+                <h3 class="public-item__title">{{ item.title }}</h3>
+
+                {% if item.description %}
+                  <p class="public-item__desc">{{ item.description }}</p>
+                {% endif %}
+
+                <div class="public-item__footer">
+                  <div class="public-item__info">
+                    {% if item.price %}
+                      <span class="public-item__price">${{ "%.2f"|format(item.price) }}</span>
+                    {% endif %}
+                    {% if item.quantity_needed > 1 %}
+                      <span class="public-item__qty">
+                        {{ item.remaining_quantity }} of {{ item.quantity_needed }} still needed
+                      </span>
+                    {% endif %}
+                    {% if item.category %}
+                      <span class="public-item__category">{{ item.category }}</span>
+                    {% endif %}
+                  </div>
+
+                  <div class="public-item__actions">
+                    {% if item.external_url and not item.is_fully_claimed %}
+                      <a href="{{ item.external_url }}" target="_blank" rel="noopener noreferrer"
+                         class="btn btn--primary btn--sm">
+                        Buy This Gift ↗
+                      </a>
+                    {% endif %}
+
+                    {% if not item.is_fully_claimed %}
+                      <button class="btn btn--ghost btn--sm" onclick="openPurchaseModal({{ item.id }}, '{{ item.title|replace("'", "\\'") }}')"
+                              type="button">
+                        Mark Purchased
+                      </button>
+                    {% else %}
+                      <span class="claimed-label">
+                        ✓ Claimed
+                        {% if item.purchased_by_note %}by {{ item.purchased_by_note }}{% endif %}
+                      </span>
+                    {% endif %}
+                  </div>
+                </div>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        </section>
+        {% endif %}
+
+        <!-- External Registries Section -->
+        {% if external_registries %}
+        <section class="profile-section" id="external">
+          <h2 class="profile-section__title">
+            <span class="section-icon">🔗</span>
+            More Gift Registries
+          </h2>
+          <p class="profile-section__subtitle">{{ profile.first_name }} also has gift registries on these sites:</p>
+
+          <div class="external-reg-cards">
+            {% for reg in external_registries %}
+            <a href="{{ reg.url }}" target="_blank" rel="noopener noreferrer" class="external-reg-card">
+              <div class="external-reg-card__icon">🛒</div>
+              <div class="external-reg-card__body">
+                <strong class="external-reg-card__name">{{ reg.name }}</strong>
+                {% if reg.description %}
+                  <p class="external-reg-card__desc">{{ reg.description }}</p>
+                {% endif %}
+                <span class="external-reg-card__cta">Browse Registry →</span>
+              </div>
+            </a>
+            {% endfor %}
+          </div>
+        </section>
+        {% endif %}
+
+        <!-- Empty state -->
+        {% if not registry_items and not external_registries and not (profile.party_details and profile.party_details.event_date) %}
+        <div class="profile-empty">
+          <div class="profile-empty__icon">🎓</div>
+          <h3>{{ profile.first_name }}'s page is being set up</h3>
+          <p>Check back soon for party details and registry items!</p>
+        </div>
+        {% endif %}
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Mark Purchased Modal -->
+<div class="modal-overlay" id="purchase-modal" aria-hidden="true" role="dialog" aria-modal="true">
+  <div class="modal">
+    <button class="modal-close" onclick="closePurchaseModal()" aria-label="Close">×</button>
+    <div class="modal-header">
+      <h2 class="modal-title">Mark as Purchased</h2>
+      <p class="modal-subtitle" id="modal-item-name"></p>
+    </div>
+    <form method="POST" id="purchase-form" class="modal-form">
+      {{ mark_purchased_form.hidden_tag() }}
+      {{ mark_purchased_form.item_id(id="modal-item-id") }}
+
+      <div class="form-group">
+        {{ mark_purchased_form.purchased_by_note.label(class="form-label") }}
+        {{ mark_purchased_form.purchased_by_note(class="form-input", placeholder="e.g. Aunt Carol") }}
+        <p class="form-hint">This will be visible on the registry so {{ profile.first_name }} knows who to thank!</p>
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" class="btn btn--ghost" onclick="closePurchaseModal()">Cancel</button>
+        <button type="submit" class="btn btn--primary">Confirm Purchase ✓</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+// Share functionality
+function shareProfile() {
+  const url = window.location.href;
+  if (navigator.share) {
+    navigator.share({
+      title: '{{ profile.full_name }}\'s Graduation Registry',
+      url: url
+    });
+  } else {
+    navigator.clipboard.writeText(url).then(() => {
+      const btn = document.getElementById('share-btn');
+      btn.textContent = 'Link Copied!';
+      setTimeout(() => { btn.textContent = 'Share Page'; }, 2000);
+    });
+  }
+}
+
+// Purchase modal
+function openPurchaseModal(itemId, itemTitle) {
+  document.getElementById('modal-item-id').value = itemId;
+  document.getElementById('modal-item-name').textContent = '"' + itemTitle + '"';
+  document.getElementById('purchase-form').action = '/item/' + itemId + '/purchase';
+  const modal = document.getElementById('purchase-modal');
+  modal.setAttribute('aria-hidden', 'false');
+  modal.classList.add('modal-overlay--visible');
+  document.body.style.overflow = 'hidden';
+}
+
+function closePurchaseModal() {
+  const modal = document.getElementById('purchase-modal');
+  modal.setAttribute('aria-hidden', 'true');
+  modal.classList.remove('modal-overlay--visible');
+  document.body.style.overflow = '';
+}
+
+document.getElementById('purchase-modal').addEventListener('click', function(e) {
+  if (e.target === this) closePurchaseModal();
+});
+
+// Registry filter
+const filterBtns = document.querySelectorAll('.filter-btn');
+const registryCards = document.querySelectorAll('.public-item-card');
+
+filterBtns.forEach(btn => {
+  btn.addEventListener('click', function() {
+    filterBtns.forEach(b => b.classList.remove('filter-btn--active'));
+    this.classList.add('filter-btn--active');
+    const filter = this.dataset.filter;
+
+    registryCards.forEach(card => {
+      const isClaimed = card.dataset.claimed === 'true';
+      if (filter === 'all') {
+        card.style.display = '';
+      } else if (filter === 'available') {
+        card.style.display = isClaimed ? 'none' : '';
+      } else if (filter === 'claimed') {
+        card.style.display = isClaimed ? '' : 'none';
+      }
+    });
+  });
+});
+
+// Sticky nav
+const profileNav = document.getElementById('profile-nav');
+if (profileNav) {
+  const navOffset = profileNav.offsetTop;
+  window.addEventListener('scroll', () => {
+    profileNav.classList.toggle('profile-nav-bar--sticky', window.scrollY > navOffset);
+  });
+}
+</script>
+{% endblock %}

@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}GradRegistry — Celebrate Your Achievement{% endblock %}</title>
+  <meta name="description" content="{% block meta_description %}Create your personal graduation registry and share your celebration with family and friends.{% endblock %}">
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400;1,600&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300;1,9..40,400&display=swap" rel="stylesheet">
+
+  <!-- Stylesheet -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+
+  {% block extra_head %}{% endblock %}
+</head>
+<body>
+
+  <!-- Navigation -->
+  <nav class="site-nav" id="site-nav">
+    <div class="nav-inner">
+      <a href="{{ url_for('index') }}" class="nav-logo">
+        <span class="logo-cap">✦</span>
+        GradRegistry
+      </a>
+
+      <button class="nav-toggle" id="nav-toggle" aria-label="Toggle menu" aria-expanded="false">
+        <span></span><span></span><span></span>
+      </button>
+
+      <ul class="nav-links" id="nav-links">
+        <li><a href="{{ url_for('search') }}" class="nav-link">Find a Graduate</a></li>
+        {% if current_user.is_authenticated %}
+          {% if current_user.profile and current_user.profile.slug %}
+            <li>
+              <a href="{{ url_for('public_profile', slug=current_user.profile.slug) }}" class="nav-link" target="_blank">
+                My Page ↗
+              </a>
+            </li>
+          {% endif %}
+          <li><a href="{{ url_for('dashboard') }}" class="nav-link">Dashboard</a></li>
+          <li>
+            <a href="{{ url_for('logout') }}" class="nav-link nav-link--secondary">Sign Out</a>
+          </li>
+        {% else %}
+          <li><a href="{{ url_for('login') }}" class="nav-link">Sign In</a></li>
+          <li><a href="{{ url_for('register') }}" class="btn btn--nav">Create Your Page</a></li>
+        {% endif %}
+      </ul>
+    </div>
+  </nav>
+
+  <!-- Flash messages -->
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="flash-container" id="flash-container">
+        {% for category, message in messages %}
+          <div class="flash flash--{{ category }}" role="alert">
+            <span class="flash-icon">
+              {% if category == 'success' %}✓{% elif category == 'danger' %}✕{% elif category == 'warning' %}!{% else %}ℹ{% endif %}
+            </span>
+            <span class="flash-text">{{ message }}</span>
+            <button class="flash-close" onclick="this.parentElement.remove()" aria-label="Dismiss">×</button>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  <!-- Main content -->
+  <main class="main-content" id="main-content">
+    {% block content %}{% endblock %}
+  </main>
+
+  <!-- Footer -->
+  <footer class="site-footer">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <a href="{{ url_for('index') }}" class="footer-logo">
+          <span class="logo-cap">✦</span> GradRegistry
+        </a>
+        <p class="footer-tagline">Celebrate every milestone.</p>
+      </div>
+
+      <nav class="footer-nav" aria-label="Footer navigation">
+        <ul>
+          <li><a href="{{ url_for('index') }}">Home</a></li>
+          <li><a href="{{ url_for('search') }}">Find a Graduate</a></li>
+          {% if current_user.is_authenticated %}
+            <li><a href="{{ url_for('dashboard') }}">Dashboard</a></li>
+            <li><a href="{{ url_for('account_settings') }}">Account</a></li>
+          {% else %}
+            <li><a href="{{ url_for('register') }}">Create Account</a></li>
+            <li><a href="{{ url_for('login') }}">Sign In</a></li>
+          {% endif %}
+        </ul>
+      </nav>
+    </div>
+    <div class="footer-bottom">
+      <p>&copy; {{ now.year }} GradRegistry. Built with care for graduates everywhere.</p>
+    </div>
+  </footer>
+
+  <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+  {% block extra_scripts %}{% endblock %}
+</body>
+</html>

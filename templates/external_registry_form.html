@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Link a Registry — GradRegistry{% endblock %}
+
+{% block content %}
+<div class="form-page">
+  <div class="form-page__header">
+    <div class="container">
+      <a href="{{ url_for('dashboard') }}" class="back-link">← Dashboard</a>
+      <h1 class="form-page__title">Link an External Registry</h1>
+      <p class="form-page__subtitle">Already have an Amazon, Target, or other registry? Link it here and it'll appear as a card on your page.</p>
+    </div>
+  </div>
+
+  <div class="container container--narrow">
+    <div class="info-banner">
+      <div class="info-banner__icon">💡</div>
+      <div>
+        <strong>How this works:</strong> Paste any registry URL — Amazon, Target, Bed Bath &amp; Beyond, Crate &amp; Barrel, or any other site. We'll display it as a clickable card on your graduation page so guests can browse directly.
+      </div>
+    </div>
+
+    <form method="POST" action="{{ url_for('add_external_registry') }}" novalidate class="edit-form">
+      {{ form.hidden_tag() }}
+
+      <div class="form-section">
+        <div class="form-group {% if form.name.errors %}form-group--error{% endif %}">
+          {{ form.name.label(class="form-label") }}
+          {{ form.name(class="form-input", placeholder="e.g. Amazon Registry, Target Registry") }}
+          {% if form.name.errors %}
+            <ul class="form-errors">{% for e in form.name.errors %}<li>{{ e }}</li>{% endfor %}</ul>
+          {% endif %}
+        </div>
+
+        <div class="form-group {% if form.url.errors %}form-group--error{% endif %}">
+          {{ form.url.label(class="form-label") }}
+          {{ form.url(class="form-input", placeholder="https://www.amazon.com/wedding/registry/…") }}
+          <p class="form-hint">Paste the full URL of your registry page.</p>
+          {% if form.url.errors %}
+            <ul class="form-errors">{% for e in form.url.errors %}<li>{{ e }}</li>{% endfor %}</ul>
+          {% endif %}
+        </div>
+
+        <div class="form-group {% if form.description.errors %}form-group--error{% endif %}">
+          {{ form.description.label(class="form-label") }}
+          {{ form.description(class="form-input", placeholder="e.g. My full wishlist with over 40 items") }}
+          <p class="form-hint">Optional — give guests a sense of what's on this registry.</p>
+          {% if form.description.errors %}
+            <ul class="form-errors">{% for e in form.description.errors %}<li>{{ e }}</li>{% endfor %}</ul>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <a href="{{ url_for('dashboard') }}" class="btn btn--ghost">Cancel</a>
+        {{ form.submit(class="btn btn--primary") }}
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

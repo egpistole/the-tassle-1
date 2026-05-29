@@ -1,0 +1,250 @@
+{% extends "base.html" %}
+
+{% block title %}GradRegistry — Your Graduation, Your Story{% endblock %}
+
+{% block content %}
+
+<!-- Hero Section -->
+<section class="hero">
+  <div class="hero-bg">
+    <div class="hero-orb hero-orb--1"></div>
+    <div class="hero-orb hero-orb--2"></div>
+    <div class="hero-orb hero-orb--3"></div>
+  </div>
+  <div class="hero-content">
+    <div class="hero-badge">
+      <span>✦</span> Graduation Season
+    </div>
+    <h1 class="hero-headline">
+      Your degree.<br>
+      <em>Your celebration.</em>
+    </h1>
+    <p class="hero-subtext">
+      Create a beautiful personal page to share your graduation milestone — party details, gift registry, and everything guests need, all in one place.
+    </p>
+    <div class="hero-actions">
+      <a href="{{ url_for('register') }}" class="btn btn--primary btn--lg">
+        Create Your Page
+        <span class="btn-arrow">→</span>
+      </a>
+      <a href="{{ url_for('search') }}" class="btn btn--ghost btn--lg">
+        Find a Graduate
+      </a>
+    </div>
+    <div class="hero-proof">
+      <div class="proof-item">
+        <strong>Free</strong>
+        <span>forever</span>
+      </div>
+      <div class="proof-divider"></div>
+      <div class="proof-item">
+        <strong>Any</strong>
+        <span>retailer links</span>
+      </div>
+      <div class="proof-divider"></div>
+      <div class="proof-item">
+        <strong>Share</strong>
+        <span>one link</span>
+      </div>
+    </div>
+  </div>
+  <div class="hero-visual">
+    <div class="mock-card">
+      <div class="mock-card__header">
+        <div class="mock-avatar"></div>
+        <div class="mock-info">
+          <div class="mock-line mock-line--name"></div>
+          <div class="mock-line mock-line--sub"></div>
+        </div>
+      </div>
+      <div class="mock-cap">🎓</div>
+      <div class="mock-section">
+        <div class="mock-label"></div>
+        <div class="mock-block"></div>
+        <div class="mock-block mock-block--sm"></div>
+      </div>
+      <div class="mock-registry">
+        <div class="mock-item">
+          <div class="mock-item-img"></div>
+          <div class="mock-item-text">
+            <div class="mock-line"></div>
+            <div class="mock-line mock-line--price"></div>
+          </div>
+        </div>
+        <div class="mock-item">
+          <div class="mock-item-img"></div>
+          <div class="mock-item-text">
+            <div class="mock-line"></div>
+            <div class="mock-line mock-line--price"></div>
+          </div>
+        </div>
+        <div class="mock-item mock-item--claimed">
+          <div class="mock-item-img"></div>
+          <div class="mock-item-text">
+            <div class="mock-line"></div>
+            <div class="mock-claimed-badge">✓ Claimed</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- How It Works -->
+<section class="how-it-works">
+  <div class="container">
+    <div class="section-label">Simple process</div>
+    <h2 class="section-title">Three steps to your perfect page</h2>
+
+    <div class="steps-grid">
+      <div class="step-card" data-step="1">
+        <div class="step-number">01</div>
+        <div class="step-icon">👤</div>
+        <h3 class="step-title">Create your account</h3>
+        <p class="step-desc">Sign up in seconds. Add your name, graduation details, school, degree, and a personal message for guests.</p>
+      </div>
+      <div class="step-connector">→</div>
+      <div class="step-card" data-step="2">
+        <div class="step-number">02</div>
+        <div class="step-icon">🎁</div>
+        <h3 class="step-title">Build your registry</h3>
+        <p class="step-desc">Add gift ideas from any store — just paste the product link. Or link your existing Amazon registry or any other registry.</p>
+      </div>
+      <div class="step-connector">→</div>
+      <div class="step-card" data-step="3">
+        <div class="step-number">03</div>
+        <div class="step-icon">🔗</div>
+        <h3 class="step-title">Share your link</h3>
+        <p class="step-desc">Send one simple link to family and friends. They can browse your registry, see party details, and click to purchase — no account needed.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Features -->
+<section class="features-section">
+  <div class="container">
+    <div class="features-grid">
+      <div class="features-text">
+        <div class="section-label">Everything in one place</div>
+        <h2 class="section-title">Everything your guests need to celebrate you</h2>
+        <ul class="features-list">
+          <li class="feature-item">
+            <span class="feature-icon">🎉</span>
+            <div>
+              <strong>Grad Party Details</strong>
+              <p>Share your celebration event — date, time, location, RSVP info, and any special notes.</p>
+            </div>
+          </li>
+          <li class="feature-item">
+            <span class="feature-icon">🛍️</span>
+            <div>
+              <strong>Custom Gift Registry</strong>
+              <p>Add items from any online retailer. Guests see what's still available and can mark items as purchased.</p>
+            </div>
+          </li>
+          <li class="feature-item">
+            <span class="feature-icon">🔗</span>
+            <div>
+              <strong>External Registry Links</strong>
+              <p>Already have an Amazon registry or Target registry? Link it directly — it shows up as a card on your page.</p>
+            </div>
+          </li>
+          <li class="feature-item">
+            <span class="feature-icon">✓</span>
+            <div>
+              <strong>Purchase Tracking</strong>
+              <p>Guests can mark items as claimed so you never receive duplicates.</p>
+            </div>
+          </li>
+        </ul>
+        <a href="{{ url_for('register') }}" class="btn btn--primary">Start for free →</a>
+      </div>
+      <div class="features-visual">
+        <div class="feat-card feat-card--party">
+          <div class="feat-card__icon">🎊</div>
+          <div class="feat-card__label">Grad Party</div>
+          <div class="feat-card__detail">Saturday, May 17 · 3:00 PM</div>
+          <div class="feat-card__detail">The Rooftop at Grand Hall</div>
+          <div class="feat-card__rsvp">RSVP by May 10</div>
+        </div>
+        <div class="feat-card feat-card--item">
+          <div class="feat-card__item-img"></div>
+          <div class="feat-card__item-body">
+            <div class="feat-card__item-name">KitchenAid Stand Mixer</div>
+            <div class="feat-card__item-price">$349.99</div>
+            <div class="feat-card__item-status feat-card__item-status--available">Still needed!</div>
+          </div>
+        </div>
+        <div class="feat-card feat-card--registry">
+          <div class="feat-card__registry-icon">🛒</div>
+          <div class="feat-card__registry-body">
+            <div class="feat-card__registry-name">Amazon Registry</div>
+            <div class="feat-card__registry-link">View full registry →</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Recent Graduates -->
+{% if recent_profiles %}
+<section class="recent-grads-section">
+  <div class="container">
+    <div class="section-label">Recently created</div>
+    <h2 class="section-title">Meet recent graduates</h2>
+
+    <div class="grad-cards-grid">
+      {% for profile in recent_profiles %}
+        {% if profile.full_name and profile.slug %}
+        <a href="{{ url_for('public_profile', slug=profile.slug) }}" class="grad-card">
+          <div class="grad-card__photo">
+            {% if profile.photo_url %}
+              <img src="{{ profile.photo_url }}" alt="{{ profile.full_name }}" loading="lazy">
+            {% else %}
+              <div class="grad-card__photo-placeholder">
+                {{ profile.first_name[0] if profile.first_name else '?' }}
+              </div>
+            {% endif %}
+          </div>
+          <div class="grad-card__info">
+            <h3 class="grad-card__name">{{ profile.full_name }}</h3>
+            {% if profile.school_name %}
+              <p class="grad-card__school">{{ profile.school_name }}</p>
+            {% endif %}
+            {% if profile.degree %}
+              <p class="grad-card__degree">{{ profile.degree }}</p>
+            {% endif %}
+            {% if profile.graduation_year %}
+              <span class="grad-card__year">Class of {{ profile.graduation_year }}</span>
+            {% endif %}
+          </div>
+          <div class="grad-card__arrow">→</div>
+        </a>
+        {% endif %}
+      {% endfor %}
+    </div>
+
+    <div class="section-cta">
+      <a href="{{ url_for('search') }}" class="btn btn--outline">Browse all graduates →</a>
+    </div>
+  </div>
+</section>
+{% endif %}
+
+<!-- CTA Section -->
+<section class="cta-section">
+  <div class="container">
+    <div class="cta-inner">
+      <div class="cta-decoration">✦</div>
+      <h2 class="cta-headline">Ready to share your milestone?</h2>
+      <p class="cta-subtext">Create your free graduation page in minutes. No credit card required.</p>
+      <a href="{{ url_for('register') }}" class="btn btn--primary btn--lg">
+        Get Started — It's Free
+      </a>
+    </div>
+  </div>
+</section>
+
+{% endblock %}
