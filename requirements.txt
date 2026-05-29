@@ -1,3 +1,11 @@
 flask>=3.0.0
 werkzeug>=3.0.0
 gunicorn>=21.2.0
+flask-login
+flask-sqlalchemy
+flask-wtf
+wtforms
+python-dotenv
+python-slugify
+bcrypt
+email-validator
